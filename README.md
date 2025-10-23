@@ -140,13 +140,13 @@ After deploying your receiver, register it:
 4. Add Receiver Application
    - **Receiver URL:** Your hosted URL (e.g., https://abc123.ngrok-free.app/receiver/)
    - **Supported platforms:** All
-5. Save and note the **Application ID** (e.g., A919C626)
+5. Save and note the **Application ID** (e.g., A6A54272)
 6. Wait **15 minutes** for changes to propagate
 7. **Reboot your Chromecast device**
 
 ## 📊 Update App with Receiver URL
 
-Currently the app uses App ID: `A919C626`
+Currently the app uses App ID: `A6A54272`
 
 If you create a new receiver:
 1. Update `ChromecastManager.swift` or configuration
@@ -304,7 +304,7 @@ Key insights:
 
 **For immediate testing:**
 1. Use ngrok (5 minutes setup)
-2. Test with existing App ID A919C626
+2. Test with existing App ID A6A54272
 3. Verify video appears on TV
 
 **For permanent deployment:**

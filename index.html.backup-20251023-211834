@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>NewCaster Receiver - Live Edge</title>
+  <title>NewCaster Receiver</title>
   
   <!-- CRITICAL: Always use protocol-relative Google-hosted SDK -->
   <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
@@ -49,30 +49,25 @@
   
   <!-- Debug overlay for development -->
   <div id="debug">
-    <div>NewCaster Receiver v1.1 (Live Edge)</div>
+    <div>NewCaster Receiver v1.0</div>
     <div>Shaka: <span id="shaka-status">Loading...</span></div>
     <div>Format: <span id="format-status">Not set</span></div>
     <div>Status: <span id="playback-status">Initializing...</span></div>
-    <div>Live Edge: <span id="live-edge-status">Disabled</span></div>
   </div>
   
   <script>
     // ============================================================================
-    // NewCaster Custom Receiver - LIVE EDGE Edition
+    // NewCaster Custom Receiver
     // ============================================================================
     // Based on Research 3 findings for HLS screen mirroring
-    // NEW: Starts playback from END of playlist for minimal latency
+    // CRITICAL: hlsSegmentFormat configuration prevents 80% of black screen issues
     // ============================================================================
     
-    console.log('📺 NewCaster Receiver v1.1 (Live Edge) - Initializing...');
+    console.log('📺 NewCaster Receiver v1.0 - Initializing...');
     
     // Get Cast Receiver Context
     const context = cast.framework.CastReceiverContext.getInstance();
     const playerManager = context.getPlayerManager();
-    
-    // Track if we should seek to live edge
-    window.startFromLiveEdge = false;
-    window.hasSeenkedToLiveEdge = false;
     
     // ============================================================================
     // CRITICAL FIX #1: HLS Segment Format Configuration
@@ -105,31 +100,12 @@
         // Update debug UI
         updateDebugUI('format-status', 'TS (MPEG-TS)');
         
-        // NEW: Check for live edge flag in custom data
-        if (loadRequestData.media.customData && loadRequestData.media.customData.startFromLiveEdge) {
-          console.log('🎯 Live edge playback requested via customData');
-          window.startFromLiveEdge = true;
-          window.hasSeenkedToLiveEdge = false;
-          updateDebugUI('live-edge-status', 'Enabled (via customData)');
-          
-          // Set stream type to LIVE
-          loadRequestData.media.streamType = cast.framework.messages.StreamType.LIVE;
-          console.log('   Stream type set to: LIVE');
-        } else {
-          // Always enable live edge for EVENT playlists (default behavior)
-          console.log('🎯 Live edge playback enabled (default for screen mirroring)');
-          window.startFromLiveEdge = true;
-          window.hasSeenkedToLiveEdge = false;
-          updateDebugUI('live-edge-status', 'Enabled (default)');
-        }
-        
         // Log full load request for debugging
         console.log('📋 Full LOAD request:', JSON.stringify({
           contentUrl: loadRequestData.media.contentUrl,
           contentType: loadRequestData.media.contentType,
           streamType: loadRequestData.media.streamType,
-          hlsSegmentFormat: loadRequestData.media.hlsSegmentFormat,
-          customData: loadRequestData.media.customData
+          hlsSegmentFormat: loadRequestData.media.hlsSegmentFormat
         }, null, 2));
         
         return loadRequestData;
@@ -139,7 +115,7 @@
     console.log('✅ LOAD message interceptor registered');
     
     // ============================================================================
-    // CRITICAL FIX #2: Shaka Player Integration with LIVE EDGE Configuration
+    // CRITICAL FIX #2: Shaka Player Integration
     // ============================================================================
     // Research 3: "H1 2025 (within 6 months): Shaka becomes the default for 
     // all HLS playback. Current state: MPL frozen, no new features or bug fixes."
@@ -149,7 +125,6 @@
     // - Better error recovery
     // - Improved buffering
     // - Active bug fixes and features
-    // - LIVE EDGE support for minimal latency
     // ============================================================================
     
     const options = new cast.framework.CastReceiverOptions();
@@ -161,34 +136,17 @@
     console.log('✅ Shaka Player enabled (version 4.9)');
     updateDebugUI('shaka-status', 'Enabled (v4.9)');
     
-    // Configure Shaka-specific settings for LOW-LATENCY screen mirroring with LIVE EDGE START
+    // Configure Shaka-specific settings for LOW-LATENCY screen mirroring
     const playbackConfig = new cast.framework.PlaybackConfig();
     playbackConfig.shakaConfig = {
       streaming: {
-        // LIVE EDGE CONFIGURATION - Start from end of playlist
-        startAtSegmentBoundary: true,      // Start at segment boundary (keyframe)
-        segmentPrefetchLimit: 1,            // Minimal prefetch (reduce latency)
-        
-        // Existing low-latency settings
         bufferingGoal: 5,       // 5 seconds buffer for LOW LATENCY
         rebufferingGoal: 2,     // Rebuffer at 2 seconds remaining
-        bufferBehind: 5,        // Keep 5 seconds of past content
-        
-        // Live streaming optimizations
-        updateIntervalSeconds: 1,           // Check for new segments every 1s
-        retryParameters: {
-          timeout: 3000,                    // Fast timeout for segment requests
-          maxAttempts: 2,                   // Quick retry (don't wait too long)
-          baseDelay: 500,                   // Short retry delay
-          backoffFactor: 1.5
-        }
+        bufferBehind: 5         // Keep 5 seconds of past content
       },
       manifest: {
         dash: {
-          ignoreMinBufferTime: true         // Ignore minimum buffer requirements for live
-        },
-        hls: {
-          useFullSegmentsForStartTime: false  // Don't wait for full segments
+          ignoreMinBufferTime: false
         }
       }
     };
@@ -198,7 +156,7 @@
     // Set max inactivity for development (reduce to 300 for production)
     options.maxInactivity = 3600; // 1 hour
     
-    console.log('✅ Playback configuration set (LOW-LATENCY mode: 5s buffer, LIVE EDGE enabled)');
+    console.log('✅ Playback configuration set (LOW-LATENCY mode: 5s buffer)');
     
     // ============================================================================
     // Error Monitoring & Recovery
@@ -258,10 +216,9 @@
     console.log('✅ Error monitoring enabled');
     
     // ============================================================================
-    // Media Status Monitoring with LIVE EDGE SEEKING
+    // Media Status Monitoring
     // ============================================================================
     // Track playback state changes for debugging
-    // NEW: Automatically seek to live edge when buffering starts
     // ============================================================================
     
     playerManager.addEventListener(
@@ -279,60 +236,18 @@
             console.log('▶️  PLAYING');
             console.log('   Current time:', mediaStatus.currentTime);
             console.log('   Media duration:', mediaStatus.media?.duration);
-            
-            // Check if we're at live edge
-            if (mediaStatus.liveSeekableRange) {
-              const { start, end } = mediaStatus.liveSeekableRange;
-              const distanceFromLiveEdge = end - mediaStatus.currentTime;
-              console.log(`   Live seekable range: ${start.toFixed(2)}s - ${end.toFixed(2)}s`);
-              console.log(`   Distance from live edge: ${distanceFromLiveEdge.toFixed(2)}s`);
-              
-              // If we drift too far from live edge (>10s), seek back
-              if (distanceFromLiveEdge > 10) {
-                console.log('⚠️  Drifted from live edge, seeking forward...');
-                playerManager.seek(end);
-              }
-            }
           } else if (state === 'BUFFERING') {
             console.log('⏳ BUFFERING...');
-            
-            // NEW: Seek to live edge during initial buffering
-            if (window.startFromLiveEdge && 
-                !window.hasSeenkedToLiveEdge &&
-                mediaStatus.liveSeekableRange) {
-              
-              const liveSeekableRange = mediaStatus.liveSeekableRange;
-              console.log('🎯 Live seekable range detected:');
-              console.log(`   Start: ${liveSeekableRange.start}s`);
-              console.log(`   End: ${liveSeekableRange.end}s`);
-              console.log(`   Current time: ${mediaStatus.currentTime}s`);
-              
-              // Seek to the live edge (end of seekable range)
-              const liveEdge = liveSeekableRange.end;
-              console.log(`⏩ Seeking to live edge: ${liveEdge}s`);
-              
-              try {
-                playerManager.seek(liveEdge);
-                window.hasSeenkedToLiveEdge = true;
-                console.log('✅ Seek command sent to live edge');
-                updateDebugUI('live-edge-status', `Seeked to ${liveEdge.toFixed(2)}s`);
-              } catch (error) {
-                console.error('❌ Failed to seek to live edge:', error);
-                updateDebugUI('live-edge-status', 'Seek failed');
-              }
-            }
           } else if (state === 'PAUSED') {
             console.log('⏸️  PAUSED');
           } else if (state === 'IDLE') {
             console.log('⏹️  IDLE');
-            // Reset live edge flag for next playback
-            window.hasSeenkedToLiveEdge = false;
           }
         }
       }
     );
     
-    console.log('✅ Media status monitoring enabled (with live edge seeking)');
+    console.log('✅ Media status monitoring enabled');
     
     // ============================================================================
     // Connection Monitoring
@@ -351,8 +266,6 @@
       cast.framework.system.EventType.SENDER_DISCONNECTED,
       event => {
         console.log('📱 Sender disconnected:', event.senderId);
-        // Reset for next connection
-        window.hasSeenkedToLiveEdge = false;
       }
     );
     
@@ -374,7 +287,6 @@
     console.log('  ✓ Error Monitoring: Enabled');
     console.log('  ✓ Media Status Tracking: Enabled');
     console.log('  ✓ Connection Tracking: Enabled');
-    console.log('  ✓ LIVE EDGE SEEKING: Enabled (starts from end of playlist)');
     console.log('');
     console.log('Ready to receive screen mirror from NewCaster app! 📺');
     
@@ -439,35 +351,6 @@
         const state = playerManager.getPlayerState();
         console.log('📊 Player state:', state);
         return state;
-      },
-      
-      // NEW: Get live seekable range
-      getLiveSeekableRange: function() {
-        const mediaStatus = playerManager.getMediaInformation();
-        const liveRange = mediaStatus?.liveSeekableRange;
-        if (liveRange) {
-          console.log('📊 Live seekable range:');
-          console.log(`   Start: ${liveRange.start}s`);
-          console.log(`   End: ${liveRange.end}s`);
-          console.log(`   Duration: ${(liveRange.end - liveRange.start).toFixed(2)}s`);
-          return liveRange;
-        } else {
-          console.log('⚠️  No live seekable range available (not a live stream?)');
-          return null;
-        }
-      },
-      
-      // NEW: Manually seek to live edge
-      seekToLiveEdge: function() {
-        const mediaStatus = playerManager.getMediaInformation();
-        const liveRange = mediaStatus?.liveSeekableRange;
-        if (liveRange && liveRange.end) {
-          console.log(`⏩ Manually seeking to live edge: ${liveRange.end}s`);
-          playerManager.seek(liveRange.end);
-          console.log('✅ Seek command sent');
-        } else {
-          console.error('❌ Cannot seek - no live seekable range available');
-        }
       }
     };
     
@@ -478,8 +361,6 @@
     console.log('   newcasterDebug.testCodecSupport()  - Test H.264 codec support');
     console.log('   newcasterDebug.getMediaInfo()      - Get current media info');
     console.log('   newcasterDebug.getPlayerState()    - Get player state');
-    console.log('   newcasterDebug.getLiveSeekableRange() - Get live seekable range');
-    console.log('   newcasterDebug.seekToLiveEdge()    - Manually seek to live edge');
     console.log('');
     
   </script>
