@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>NewCaster Receiver</title>
+  
+  <!-- CRITICAL: Always use protocol-relative Google-hosted SDK -->
+  <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+  
+  <style>
+    /* Minimal styling - receiver UI should be clean */
+    html, body { 
+      margin: 0; 
+      padding: 0; 
+      width: 100%; 
+      height: 100%; 
+      background: #000; 
+      overflow: hidden;
+    }
+    
+    /* Built-in cast-media-player element will handle video display */
+    cast-media-player {
+      width: 100%;
+      height: 100%;
+    }
+    
+    /* Debug overlay (can be hidden in production) */
+    #debug {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.8);
+      color: #0f0;
+      padding: 10px;
+      font-family: monospace;
+      font-size: 12px;
+      border-radius: 5px;
+      max-width: 400px;
+      word-wrap: break-word;
+      z-index: 1000;
+      display: none; /* Hidden by default, enable with console command */
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Built-in media player element - handles video display and controls -->
+  <cast-media-player></cast-media-player>
+  
+  <!-- Debug overlay for development -->
+  <div id="debug">
+    <div>NewCaster Receiver v1.0</div>
+    <div>Shaka: <span id="shaka-status">Loading...</span></div>
+    <div>Format: <span id="format-status">Not set</span></div>
+    <div>Status: <span id="playback-status">Initializing...</span></div>
+  </div>
+  
+  <script>
+    // ============================================================================
+    // NewCaster Custom Receiver
+    // ============================================================================
+    // Based on Research 3 findings for HLS screen mirroring
+    // CRITICAL: hlsSegmentFormat configuration prevents 80% of black screen issues
+    // ============================================================================
+    
+    console.log('📺 NewCaster Receiver v1.0 - Initializing...');
+    
+    // Get Cast Receiver Context
+    const context = cast.framework.CastReceiverContext.getInstance();
+    const playerManager = context.getPlayerManager();
+    
+    // ============================================================================
+    // CRITICAL FIX #1: HLS Segment Format Configuration
+    // ============================================================================
+    // Research 3: "This single configuration issue accounts for approximately 
+    // 80% of 'connection works but no video' cases"
+    // 
+    // Our app uses MPEG-TS segments (.ts files), so we MUST set format to TS
+    // Without this, receiver defaults to auto-detection which often fails
+    // ============================================================================
+    
+    playerManager.setMessageInterceptor(
+      cast.framework.messages.MessageType.LOAD,
+      loadRequestData => {
+        console.log('📥 LOAD message intercepted');
+        console.log('   Original content type:', loadRequestData.media.contentType);
+        console.log('   Original URL:', loadRequestData.media.contentUrl);
+        
+        // Force correct content type for HLS
+        loadRequestData.media.contentType = 'application/x-mpegurl';
+        
+        // CRITICAL: Set HLS segment format to match our MPEG-TS segments
+        // This prevents Error 315: HLS_NETWORK_INVALID_SEGMENT
+        loadRequestData.media.hlsSegmentFormat = 
+          cast.framework.messages.HlsSegmentFormat.TS;
+        
+        console.log('✅ HLS segment format set to: TS (MPEG-2 Transport Stream)');
+        console.log('   This matches our ffmpeg MPEG-TS conversion');
+        
+        // Update debug UI
+        updateDebugUI('format-status', 'TS (MPEG-TS)');
+        
+        // Log full load request for debugging
+        console.log('📋 Full LOAD request:', JSON.stringify({
+          contentUrl: loadRequestData.media.contentUrl,
+          contentType: loadRequestData.media.contentType,
+          streamType: loadRequestData.media.streamType,
+          hlsSegmentFormat: loadRequestData.media.hlsSegmentFormat
+        }, null, 2));
+        
+        return loadRequestData;
+      }
+    );
+    
+    console.log('✅ LOAD message interceptor registered');
+    
+    // ============================================================================
+    // CRITICAL FIX #2: Shaka Player Integration
+    // ============================================================================
+    // Research 3: "H1 2025 (within 6 months): Shaka becomes the default for 
+    // all HLS playback. Current state: MPL frozen, no new features or bug fixes."
+    //
+    // Enabling Shaka Player now ensures:
+    // - Future compatibility (mandatory in 2025)
+    // - Better error recovery
+    // - Improved buffering
+    // - Active bug fixes and features
+    // ============================================================================
+    
+    const options = new cast.framework.CastReceiverOptions();
+    
+    // Enable Shaka Player for HLS (CRITICAL for 2025 compatibility)
+    options.useShakaForHls = true;
+    options.shakaVersion = '4.9'; // Latest stable as of Sept 2024
+    
+    console.log('✅ Shaka Player enabled (version 4.9)');
+    updateDebugUI('shaka-status', 'Enabled (v4.9)');
+    
+    // Configure Shaka-specific settings for optimal screen mirroring
+    const playbackConfig = new cast.framework.PlaybackConfig();
+    playbackConfig.shakaConfig = {
+      streaming: {
+        bufferingGoal: 30,      // 30 seconds buffer for smooth playback
+        rebufferingGoal: 2,     // Rebuffer at 2 seconds remaining
+        bufferBehind: 30        // Keep 30 seconds of past content
+      },
+      manifest: {
+        dash: {
+          ignoreMinBufferTime: false
+        }
+      }
+    };
+    
+    options.playbackConfig = playbackConfig;
+    
+    // Set max inactivity for development (reduce to 300 for production)
+    options.maxInactivity = 3600; // 1 hour
+    
+    console.log('✅ Playback configuration set (optimized for screen mirroring)');
+    
+    // ============================================================================
+    // Error Monitoring & Recovery
+    // ============================================================================
+    // Research 3: "Common error codes and their exact fixes"
+    // Monitor for specific errors and provide actionable debugging info
+    // ============================================================================
+    
+    playerManager.addEventListener(
+      cast.framework.events.EventType.ERROR,
+      event => {
+        console.error('❌ PLAYBACK ERROR');
+        console.error('   Error code:', event.detailedErrorCode);
+        console.error('   Error message:', event.error);
+        
+        updateDebugUI('playback-status', 'ERROR: ' + event.detailedErrorCode);
+        
+        // Handle specific errors from Research 3
+        switch(event.detailedErrorCode) {
+          case cast.framework.events.DetailedErrorCode.HLS_NETWORK_INVALID_SEGMENT:
+            // Error 315 - Format mismatch (should not happen with our interceptor)
+            console.error('🔴 Error 315: HLS_NETWORK_INVALID_SEGMENT');
+            console.error('   This means segment format mismatch');
+            console.error('   Expected: TS format, Got: Unknown');
+            console.error('   CHECK: Is ffmpeg converting to MPEG-TS correctly?');
+            break;
+            
+          case 301: // SEGMENT_NETWORK + HTTP status
+            console.error('🔴 Error 301: Network error retrieving segments');
+            console.error('   CHECK: Is HTTP server running?');
+            console.error('   CHECK: Are CORS headers correct?');
+            console.error('   CHECK: Are segments accessible?');
+            break;
+            
+          case 905: // LOAD_FAILED
+            console.error('🔴 Error 905: LOAD_FAILED');
+            console.error('   CHECK: CORS headers');
+            console.error('   CHECK: Codec compatibility');
+            console.error('   CHECK: Network connectivity');
+            break;
+            
+          case 104: // MEDIA_SRC_NOT_SUPPORTED
+            console.error('🔴 Error 104: MEDIA_SRC_NOT_SUPPORTED');
+            console.error('   CHECK: Codec profile (should be H.264 High Profile)');
+            console.error('   CHECK: Container format (should be MPEG-TS)');
+            break;
+            
+          default:
+            console.error('🔴 Unknown error:', event.detailedErrorCode);
+        }
+        
+        // Log full error details
+        console.error('📋 Full error details:', JSON.stringify(event, null, 2));
+      }
+    );
+    
+    console.log('✅ Error monitoring enabled');
+    
+    // ============================================================================
+    // Media Status Monitoring
+    // ============================================================================
+    // Track playback state changes for debugging
+    // ============================================================================
+    
+    playerManager.addEventListener(
+      cast.framework.events.EventType.MEDIA_STATUS,
+      event => {
+        const mediaStatus = event.mediaStatus;
+        
+        if (mediaStatus) {
+          const state = mediaStatus.playerState;
+          console.log('📊 Media status update:', state);
+          updateDebugUI('playback-status', state);
+          
+          // Log detailed status on state changes
+          if (state === 'PLAYING') {
+            console.log('▶️  PLAYING');
+            console.log('   Current time:', mediaStatus.currentTime);
+            console.log('   Media duration:', mediaStatus.media?.duration);
+          } else if (state === 'BUFFERING') {
+            console.log('⏳ BUFFERING...');
+          } else if (state === 'PAUSED') {
+            console.log('⏸️  PAUSED');
+          } else if (state === 'IDLE') {
+            console.log('⏹️  IDLE');
+          }
+        }
+      }
+    );
+    
+    console.log('✅ Media status monitoring enabled');
+    
+    // ============================================================================
+    // Connection Monitoring
+    // ============================================================================
+    // Track sender connections for debugging
+    // ============================================================================
+    
+    context.addEventListener(
+      cast.framework.system.EventType.SENDER_CONNECTED,
+      event => {
+        console.log('📱 Sender connected:', event.senderId);
+      }
+    );
+    
+    context.addEventListener(
+      cast.framework.system.EventType.SENDER_DISCONNECTED,
+      event => {
+        console.log('📱 Sender disconnected:', event.senderId);
+      }
+    );
+    
+    console.log('✅ Connection monitoring enabled');
+    
+    // ============================================================================
+    // Start Receiver Application
+    // ============================================================================
+    // MUST be called after all interceptors and listeners are configured
+    // ============================================================================
+    
+    context.start(options);
+    
+    console.log('🚀 NewCaster receiver started successfully!');
+    console.log('');
+    console.log('Configuration Summary:');
+    console.log('  ✓ Shaka Player: Enabled (v4.9)');
+    console.log('  ✓ HLS Format: TS (MPEG-2 Transport Stream)');
+    console.log('  ✓ Error Monitoring: Enabled');
+    console.log('  ✓ Media Status Tracking: Enabled');
+    console.log('  ✓ Connection Tracking: Enabled');
+    console.log('');
+    console.log('Ready to receive screen mirror from NewCaster app! 📺');
+    
+    updateDebugUI('playback-status', 'Ready');
+    
+    // ============================================================================
+    // Debug Utilities
+    // ============================================================================
+    // Helper functions for debug UI and console commands
+    // ============================================================================
+    
+    function updateDebugUI(elementId, text) {
+      const element = document.getElementById(elementId);
+      if (element) {
+        element.textContent = text;
+      }
+    }
+    
+    // Expose debug functions to console for testing
+    window.newcasterDebug = {
+      // Show/hide debug overlay
+      showDebug: function() {
+        document.getElementById('debug').style.display = 'block';
+        console.log('✅ Debug UI enabled');
+      },
+      
+      hideDebug: function() {
+        document.getElementById('debug').style.display = 'none';
+        console.log('✅ Debug UI disabled');
+      },
+      
+      // Enable verbose logging
+      enableVerboseLogging: function() {
+        context.setLoggerLevel(cast.framework.LoggerLevel.DEBUG);
+        console.log('✅ Verbose logging enabled');
+      },
+      
+      // Test codec support
+      testCodecSupport: function() {
+        const codecs = [
+          { name: 'H.264 High Profile 4.1', codec: 'avc1.640029, mp4a.40.2' },
+          { name: 'H.264 Main Profile 4.0', codec: 'avc1.4D401E, mp4a.40.2' },
+          { name: 'H.264 Baseline 3.0', codec: 'avc1.42001E, mp4a.40.2' }
+        ];
+        
+        console.log('🔍 Testing codec support:');
+        codecs.forEach(({ name, codec }) => {
+          const supported = context.canDisplayType('video/mp4', codec, 1920, 1080, 30);
+          console.log(`   ${supported ? '✅' : '❌'} ${name}: ${codec}`);
+        });
+      },
+      
+      // Get current media info
+      getMediaInfo: function() {
+        const mediaStatus = playerManager.getMediaInformation();
+        console.log('📋 Current media info:', mediaStatus);
+        return mediaStatus;
+      },
+      
+      // Get player state
+      getPlayerState: function() {
+        const state = playerManager.getPlayerState();
+        console.log('📊 Player state:', state);
+        return state;
+      }
+    };
+    
+    console.log('');
+    console.log('💡 Debug commands available in console:');
+    console.log('   newcasterDebug.showDebug()         - Show debug overlay');
+    console.log('   newcasterDebug.enableVerboseLogging() - Enable DEBUG logging');
+    console.log('   newcasterDebug.testCodecSupport()  - Test H.264 codec support');
+    console.log('   newcasterDebug.getMediaInfo()      - Get current media info');
+    console.log('   newcasterDebug.getPlayerState()    - Get player state');
+    console.log('');
+    
+  </script>
+</body>
+</html>
