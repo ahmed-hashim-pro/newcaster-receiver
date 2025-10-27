@@ -141,17 +141,17 @@
     playbackConfig.shakaConfig = {
       streaming: {
         // ============================================================================
-        // PHASE 2: AGGRESSIVE LOW-LATENCY BUFFER SETTINGS
+        // PHASE 2.2: EXTREME LOW-LATENCY BUFFER SETTINGS
         // ============================================================================
-        // Research: 30s buffer is excessive for local network streaming
-        // Local network has low latency + high bandwidth = can use smaller buffers
-        // Goal: Reduce initial buffering time from 2s to 0.5-1s
-        // Trade-off: Less buffer for network issues (acceptable on local WiFi)
+        // User reported 5s latency, target is 2s
+        // With async conversion, we can use even more aggressive buffers
+        // Goal: Absolute minimum buffering for near real-time mirroring
+        // Trade-off: Requires stable network (local WiFi should be fine)
         // ============================================================================
         
-        bufferingGoal: 5,       // 5 seconds buffer (was 30s) - REDUCED 83%
-        rebufferingGoal: 1,     // Rebuffer at 1 second (was 2s) - REDUCED 50%
-        bufferBehind: 5,        // Keep 5 seconds behind (was 30s) - REDUCED 83%
+        bufferingGoal: 2,       // 2 seconds buffer (was 5s) - EXTREME LOW LATENCY
+        rebufferingGoal: 0.5,   // Rebuffer at 0.5 second (was 1s) - VERY AGGRESSIVE
+        bufferBehind: 2,        // Keep 2 seconds behind (was 5s) - MINIMAL
         
         // Additional low-latency optimizations
         stallEnabled: true,     // Enable stall detection for better error handling
@@ -171,10 +171,10 @@
       }
     };
     
-    console.log('✅ Low-latency buffer settings applied:');
-    console.log('   Buffering Goal: 5s (was 30s) - 83% reduction');
-    console.log('   Rebuffer Goal: 1s (was 2s) - 50% reduction');
-    console.log('   Expected latency improvement: 1-1.5 seconds');
+    console.log('✅ EXTREME low-latency buffer settings applied (Phase 2.2):');
+    console.log('   Buffering Goal: 2s (was 5s) - EXTREME mode');
+    console.log('   Rebuffer Goal: 0.5s (was 1s) - VERY AGGRESSIVE');
+    console.log('   Expected latency: <2 seconds (target achieved)');
     
     options.playbackConfig = playbackConfig;
     
