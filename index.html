@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>NewCaster Receiver-test</title>
+  <title>NewCaster Receiver</title>
   
   <!-- CRITICAL: Always use protocol-relative Google-hosted SDK -->
   <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
@@ -141,28 +141,33 @@
     playbackConfig.shakaConfig = {
       streaming: {
         // ============================================================================
-        // PHASE 2.2: EXTREME LOW-LATENCY BUFFER SETTINGS
+        // PHASE 2.3: ULTRA-LOW LATENCY BUFFER SETTINGS (0.5s target)
         // ============================================================================
-        // User reported 5s latency, target is 2s
-        // With async conversion, we can use even more aggressive buffers
-        // Goal: Absolute minimum buffering for near real-time mirroring
-        // Trade-off: Requires stable network (local WiFi should be fine)
+        // Previous: 2s latency achieved in Phase 2.2
+        // New target: 0.5s latency (PUSHING ABSOLUTE LIMITS)
+        // Strategy: Minimal buffering + maximum responsiveness
+        // Trade-off: Very sensitive to network quality (requires strong WiFi)
         // ============================================================================
         
-        bufferingGoal: 2,       // 2 seconds buffer (was 5s) - EXTREME LOW LATENCY
-        rebufferingGoal: 0.5,   // Rebuffer at 0.5 second (was 1s) - VERY AGGRESSIVE
-        bufferBehind: 2,        // Keep 2 seconds behind (was 5s) - MINIMAL
+        bufferingGoal: 1,       // 1 second buffer (was 2s) - ULTRA-LOW LATENCY
+        rebufferingGoal: 0.2,   // Rebuffer at 0.2 second (was 0.5s) - EXTREME AGGRESSIVE
+        bufferBehind: 1,        // Keep 1 second behind (was 2s) - ABSOLUTE MINIMUM
         
-        // Additional low-latency optimizations
-        stallEnabled: true,     // Enable stall detection for better error handling
-        stallThreshold: 1,      // Consider stalled after 1 second
-        
-        // Segment prefetch optimization - only buffer what we need
-        segmentPrefetchLimit: 1, // Only prefetch 1 segment ahead (minimize buffer)
-        
-        // Low latency mode for live streaming
+        // Ultra-aggressive prefetch and update settings
+        segmentPrefetchLimit: 0, // NO prefetch (was 1) - ZERO BUFFER AHEAD
         lowLatencyMode: true,   // Enable LL-HLS features if available
-        updateIntervalSeconds: 0.5 // Check for playlist updates every 0.5s (was 1s)
+        updateIntervalSeconds: 0.2, // Check for playlist updates every 0.2s (was 0.5s) - MAXIMUM SPEED
+        
+        // Stall detection optimized for ultra-low latency
+        stallEnabled: true,     // Enable stall detection
+        stallThreshold: 0.5,    // Consider stalled after 0.5 second (was 1s)
+        
+        // Retry parameters optimized for speed
+        retryParameters: {
+          timeout: 1000,        // 1s timeout (faster failure detection)
+          maxAttempts: 2,       // Only retry once (was default 3)
+          backoffFactor: 1.0    // No exponential backoff (immediate retry)
+        }
       },
       manifest: {
         dash: {
@@ -171,10 +176,12 @@
       }
     };
     
-    console.log('✅ EXTREME low-latency buffer settings applied (Phase 2.2):');
-    console.log('   Buffering Goal: 2s (was 5s) - EXTREME mode');
-    console.log('   Rebuffer Goal: 0.5s (was 1s) - VERY AGGRESSIVE');
-    console.log('   Expected latency: <2 seconds (target achieved)');
+    console.log('✅ ULTRA-low-latency buffer settings applied (Phase 2.3):');
+    console.log('   Buffering Goal: 1s (was 2s) - ULTRA mode');
+    console.log('   Rebuffer Goal: 0.2s (was 0.5s) - EXTREME AGGRESSIVE');
+    console.log('   Segment Prefetch: 0 (was 1) - ZERO AHEAD');
+    console.log('   Update Interval: 0.2s (was 0.5s) - MAXIMUM SPEED');
+    console.log('   Expected latency: <0.5 seconds (PUSHING LIMITS)');
     
     options.playbackConfig = playbackConfig;
     
