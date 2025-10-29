@@ -22,6 +22,25 @@
     cast-media-player {
       width: 100%;
       height: 100%;
+      --splash-image: none;
+      --splash-color: #000;
+    }
+
+    /* Hide loading spinner and progress indicators */
+    cast-media-player::part(spinner) {
+      display: none !important;
+    }
+
+    cast-media-player::part(splash) {
+      display: none !important;
+    }
+
+    /* Additional loading indicator styles */
+    cast-media-player .spinner,
+    cast-media-player .loading-spinner,
+    cast-media-player [class*="spinner"],
+    cast-media-player [class*="loading"] {
+      display: none !important;
     }
     
     /* Debug overlay (can be hidden in production) */
@@ -184,11 +203,18 @@
     console.log('   Expected latency: <0.5 seconds (PUSHING LIMITS)');
     
     options.playbackConfig = playbackConfig;
-    
-    // Set max inactivity for development (reduce to 300 for production)
-    options.maxInactivity = 3600; // 1 hour
-    
+
+    // CRITICAL FIX: Prevent receiver from closing during screen mirroring
+    // For LIVE streams, we need extended inactivity timeout to handle buffering/pauses
+    options.maxInactivity = 86400; // 24 hours (prevents premature closure)
+
+    // Disable idle timeout - receiver should stay alive even when IDLE
+    // This is critical for screen mirroring which may have intermittent activity
+    options.disableIdleTimeout = true;
+
     console.log('✅ Playback configuration set (optimized for screen mirroring)');
+    console.log('   Max Inactivity: 24 hours (extended for LIVE streams)');
+    console.log('   Idle Timeout: Disabled (prevents premature closure)');
     
     // ============================================================================
     // Error Monitoring & Recovery
@@ -257,23 +283,30 @@
       cast.framework.events.EventType.MEDIA_STATUS,
       event => {
         const mediaStatus = event.mediaStatus;
-        
+
         if (mediaStatus) {
           const state = mediaStatus.playerState;
           console.log('📊 Media status update:', state);
           updateDebugUI('playback-status', state);
-          
+
           // Log detailed status on state changes
           if (state === 'PLAYING') {
             console.log('▶️  PLAYING');
             console.log('   Current time:', mediaStatus.currentTime);
             console.log('   Media duration:', mediaStatus.media?.duration);
+
+            // CRITICAL FIX: Hide loading spinners when playback starts
+            hideLoadingIndicators();
           } else if (state === 'BUFFERING') {
             console.log('⏳ BUFFERING...');
           } else if (state === 'PAUSED') {
             console.log('⏸️  PAUSED');
           } else if (state === 'IDLE') {
             console.log('⏹️  IDLE');
+            // CRITICAL: For LIVE streams, IDLE doesn't mean "finished"
+            // It might just be buffering or waiting for segments
+            // Don't close the receiver - wait for sender to reconnect
+            console.log('   ℹ️  IDLE state detected - keeping receiver alive for LIVE stream');
           }
         }
       }
@@ -329,12 +362,33 @@
     // ============================================================================
     // Helper functions for debug UI and console commands
     // ============================================================================
-    
+
     function updateDebugUI(elementId, text) {
       const element = document.getElementById(elementId);
       if (element) {
         element.textContent = text;
       }
+    }
+
+    function hideLoadingIndicators() {
+      // Force hide any loading spinners or progress indicators
+      const mediaPlayer = document.querySelector('cast-media-player');
+      if (mediaPlayer && mediaPlayer.shadowRoot) {
+        // Try to access and hide loading elements in shadow DOM
+        const spinners = mediaPlayer.shadowRoot.querySelectorAll('[class*="spinner"], [class*="loading"], [class*="progress"]');
+        spinners.forEach(spinner => {
+          spinner.style.display = 'none';
+          spinner.style.visibility = 'hidden';
+          spinner.style.opacity = '0';
+        });
+        console.log('🎯 Loading indicators hidden (PLAYING state)');
+      }
+
+      // Additional cleanup - hide any lingering loading states
+      const allSpinners = document.querySelectorAll('.spinner, .loading-spinner, [class*="loading"]');
+      allSpinners.forEach(spinner => {
+        spinner.style.display = 'none';
+      });
     }
     
     // Expose debug functions to console for testing
@@ -383,6 +437,12 @@
         const state = playerManager.getPlayerState();
         console.log('📊 Player state:', state);
         return state;
+      },
+
+      // Manually hide loading indicators
+      hideLoadingIndicators: function() {
+        hideLoadingIndicators();
+        console.log('✅ Loading indicators hidden manually');
       }
     };
     
@@ -393,6 +453,7 @@
     console.log('   newcasterDebug.testCodecSupport()  - Test H.264 codec support');
     console.log('   newcasterDebug.getMediaInfo()      - Get current media info');
     console.log('   newcasterDebug.getPlayerState()    - Get player state');
+    console.log('   newcasterDebug.hideLoadingIndicators() - Manually hide loading spinners');
     console.log('');
     
   </script>
